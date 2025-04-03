@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js Audio Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        margin: 0;
+        background-color: #000;
+        color: #fff;
+        font-family: "Inter", sans-serif;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+
+      #controls {
+        position: absolute;
+        bottom: 1rem;
+        left: 1rem;
+        z-index: 10;
+        background-color: rgba(17, 24, 39, 0.85); /* bg-gray-900/85 */
+        /* Added backdrop blur */
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px); /* Safari support */
+        padding: 1rem;
+        border-radius: 0.5rem; /* rounded-lg */
+        border: 1px solid rgba(55, 65, 81, 0.6); /* border-gray-700/60 */
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2),
+          0 4px 6px -2px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease-in-out;
+        max-height: 500px; /* Limit height */
+        width: 220px; /* Set a fixed width */
+        overflow-y: auto; /* Scroll if content overflows */
+      }
+
+      /* Collapsed State - Make it a small square */
+      #controls.collapsed {
+        padding: 0; /* Remove padding */
+        width: 40px; /* Small width */
+        height: 40px; /* Small height */
+        max-height: 40px;
+        overflow: hidden; /* Hide all content except button */
+        /* Center the toggle button */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #controls.collapsed > *:not(#toggleButton) {
+        display: none; /* Hide everything else */
+      }
+      /* Adjust toggle button position when collapsed */
+      #controls.collapsed #toggleButton {
+        position: static; /* Reset position */
+        /* Icon color adjusted for visibility */
+        color: #d1d5db; /* text-gray-300 */
+      }
+      #controls.collapsed #toggleButton:hover {
+        color: #fff;
+      }
+      #controls.collapsed #toggleButton svg {
+        transform: rotate(180deg);
+      }
+
+      /* General Button/Label Styling Refined */
+      #controls label,
+      #controls button:not(#toggleButton) {
+        display: block;
+        padding: 0.5rem 1rem; /* Slightly reduced padding */
+        border-radius: 0.375rem;
+        cursor: pointer;
+        text-align: center;
+        font-weight: 500;
+        font-size: 0.875rem; /* text-sm */
+        transition: background-color 0.2s, box-shadow 0.2s;
+        margin-top: 0.65rem; /* Adjusted margin */
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.1);
+      }
+      #controls label {
+        background-color: #4b5563;
+        color: #e5e7eb;
+      } /* Slightly lighter gray */
+      #controls label:hover {
+        background-color: #525a66;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.15);
+      }
+      #controls button:not(#toggleButton) {
+        background-color: #6d28d9;
+        color: white;
+        border: none;
+      } /* Slightly darker purple */
+      #controls button:not(#toggleButton):hover {
+        background-color: #5b21b6;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.15);
+      } /* Darker purple hover */
+      #controls button:not(#toggleButton):disabled {
+        background-color: #4b5563;
+        cursor: not-allowed;
+        opacity: 0.6;
+        box-shadow: none;
+      }
+      #fileName {
+        color: #9ca3af;
+        font-size: 0.75rem;
+        margin-top: 0.65rem;
+        text-align: center;
+        display: block;
+      }
+
+      /* Color Picker Styling Refined */
+      .color-picker-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 0.65rem;
+        padding: 0.4rem 0.1rem;
+      }
+      .color-picker-container label {
+        margin: 0;
+        padding: 0;
+        background: none;
+        box-shadow: none;
+        color: #9ca3af;
+        font-size: 0.8rem;
+        text-align: left;
+        cursor: default;
+      }
+      .color-picker-container input[type="color"] {
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        width: 36px;
+        height: 22px;
+        background-color: transparent;
+        border: 1px solid #4b5563;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        padding: 0;
+      }
+      .color-picker-container input[type="color"]::-webkit-color-swatch {
+        border-radius: 0.15rem;
+        border: none;
+      }
+      .color-picker-container input[type="color"]::-moz-color-swatch {
+        border-radius: 0.15rem;
+        border: none;
+      }
+
+      /* Toggle Button Styling (position adjusted in collapsed state) */
+      #toggleButton {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        background: none;
+        border: none;
+        padding: 0.25rem;
+        cursor: pointer;
+        color: #9ca3af;
+      }
+      #toggleButton:hover {
+        color: #e5e7eb;
+      }
+      #toggleButton svg {
+        width: 1rem;
+        height: 1rem;
+        transition: transform 0.3s ease-in-out;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls" class="flex flex-col">
+      <button id="toggleButton" title="Toggle UI">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke-width="2"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M4.5 15.75l7.5-7.5 7.5 7.5"
+          />
+        </svg>
+      </button>
+
+      <label for="audioFile">Select Audio File</label>
+      <input type="file" id="audioFile" accept="audio/*" />
+
+      <button id="playPauseButton" disabled>Play</button>
+
+      <span id="fileName">No file selected</span>
+
+      <div class="color-picker-container">
+        <label for="startColorPicker">Start Color:</label>
+        <input type="color" id="startColorPicker" value="#ff00ff" />
+      </div>
+      <div class="color-picker-container">
+        <label for="endColorPicker">End Color:</label>
+        <input type="color" id="endColorPicker" value="#00ffff" />
+      </div>
+    </div>
+    <canvas id="visualizerCanvas"></canvas>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+      import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+
+      // --- Global Variables ---
+      let scene, camera, renderer;
+      let audioContext, analyser, source, gainNode;
+      let bufferLength, dataArray;
+      let visualizerBars = [];
+      const barCount = 128;
+      let isPlaying = false;
+      let audioBuffer;
+      let startTime = 0;
+      let pauseOffset = 0;
+
+      // Post-processing variables
+      let composer;
+      let renderTargetA, renderTargetB;
+      let feedbackPass;
+      const feedbackShader = {
+        uniforms: {
+          tDiffuse: { value: null },
+          tOld: { value: null },
+          u_persistence: { value: 0.92 },
+        },
+        vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tOld; uniform float u_persistence; varying vec2 vUv; void main() { vec4 newColor = texture2D(tDiffuse, vUv); vec4 oldColor = texture2D(tOld, vUv); gl_FragColor = newColor + oldColor * u_persistence; }`,
+      };
+
+      // --- Get DOM Elements ---
+      const fileInput = document.getElementById("audioFile");
+      const playPauseButton = document.getElementById("playPauseButton");
+      const fileNameDisplay = document.getElementById("fileName");
+      const canvas = document.getElementById("visualizerCanvas");
+      const messageBox = document.getElementById("messageBox");
+      const controlsPanel = document.getElementById("controls");
+      const toggleButton = document.getElementById("toggleButton");
+      const startColorPicker = document.getElementById("startColorPicker");
+      const endColorPicker = document.getElementById("endColorPicker");
+
+      // --- Initialization Function ---
+      function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(
+          75,
+          window.innerWidth / window.innerHeight,
+          0.1,
+          1000
+        );
+        camera.position.z = 50;
+
+        renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.autoClear = false;
+
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = barCount * 2;
+        analyser.smoothingTimeConstant = 0.8;
+        bufferLength = analyser.frequencyBinCount;
+        dataArray = new Uint8Array(bufferLength);
+
+        gainNode = audioContext.createGain();
+        gainNode.connect(audioContext.destination);
+
+        createVisualizerBars();
+        setupPostProcessing();
+
+        startColorPicker.addEventListener("input", (event) => {
+          clearVisualizerBars();
+          createVisualizerBars();
+        });
+        endColorPicker.addEventListener("input", (event) => {
+          clearVisualizerBars();
+          createVisualizerBars();
+        });
+
+        toggleButton.addEventListener("click", () => {
+          controlsPanel.classList.toggle("collapsed");
+        });
+        window.addEventListener("resize", onWindowResize, false);
+
+        animate();
+      }
+
+      function setupPostProcessing() {
+        const targetOptions = {
+          minFilter: THREE.LinearFilter,
+          magFilter: THREE.LinearFilter,
+          format: THREE.RGBAFormat,
+        };
+        renderTargetA = new THREE.WebGLRenderTarget(
+          window.innerWidth * renderer.getPixelRatio(),
+          window.innerHeight * renderer.getPixelRatio(),
+          targetOptions
+        );
+        renderTargetB = new THREE.WebGLRenderTarget(
+          window.innerWidth * renderer.getPixelRatio(),
+          window.innerHeight * renderer.getPixelRatio(),
+          targetOptions
+        );
+        feedbackPass = new ShaderPass(feedbackShader);
+        feedbackPass.needsSwap = false;
+      }
+
+      function clearVisualizerBars() {
+        // Remove all existing bars from the scene
+        visualizerBars.forEach((bar) => {
+          scene.remove(bar);
+          if (bar.geometry) bar.geometry.dispose();
+          if (bar.material) bar.material.dispose();
+        });
+        visualizerBars = [];
+      }
+
+      function createVisualizerBars() {
+        const barWidth = 1.5;
+        const barSpacing = 0.5;
+        const totalWidth = (barWidth + barSpacing) * barCount - barSpacing;
+        const startX = -totalWidth / 2;
+        const barMaterial = new THREE.ShaderMaterial({
+          uniforms: {
+            u_time: { value: 0.0 },
+            u_frequency: { value: 0.0 },
+            u_color1: { value: new THREE.Color(startColorPicker.value) },
+            u_color2: { value: new THREE.Color(endColorPicker.value) },
+            u_barIndex: { value: 0.0 },
+            u_intensity: { value: 2.0 },
+          },
+          vertexShader: `
+                    varying float v_frequency; varying float v_barIndex; varying vec2 vUv;
+                    uniform float u_frequency; uniform float u_barIndex; uniform float u_time;
+                    void main() {
+                        v_frequency = u_frequency; v_barIndex = u_barIndex; vUv = uv;
+                        float baseHeight = v_frequency * 60.0;
+                        float heightOscillation = sin(u_time * 3.0 + v_barIndex * 5.0) * 1.5;
+                        float heightScale = max(0.0, baseHeight + heightOscillation);
+                        vec3 pos = position;
+                        pos.y = (pos.y + 0.5) * heightScale - (heightScale / 2.0);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                    }
+                `,
+          fragmentShader: `
+                    uniform float u_time; uniform vec3 u_color1; uniform vec3 u_color2; uniform float u_intensity;
+                    varying float v_frequency; varying float v_barIndex; varying vec2 vUv;
+                    void main() {
+                        vec3 color = mix(u_color1, u_color2, v_barIndex);
+                        float freqIntensity = pow(v_frequency, 1.5) * u_intensity + 0.1;
+                        float verticalGlow = pow(1.0 - abs(vUv.y * 2.0 - 1.0), 3.0);
+                        float verticalGradient = 0.8 + vUv.y * 0.4;
+                        vec3 finalColor = color * freqIntensity * verticalGlow * verticalGradient;
+                        float alpha = smoothstep(0.0, 0.1, v_frequency) * (0.6 + verticalGlow * 0.4);
+                        gl_FragColor = vec4(finalColor, alpha);
+                    }
+                `,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        });
+        for (let i = 0; i < barCount; i++) {
+          const geometry = new THREE.PlaneGeometry(barWidth, 1);
+          const material = barMaterial.clone();
+          material.uniforms.u_barIndex.value = i / (barCount - 1);
+          const bar = new THREE.Mesh(geometry, material);
+          bar.position.x = startX + i * (barWidth + barSpacing);
+          bar.position.y = 0;
+          scene.add(bar);
+          visualizerBars.push(bar);
+        }
+      }
+
+      // --- Audio Loading and Processing ---
+      fileInput.addEventListener("change", (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          fileNameDisplay.textContent = file.name;
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            audioContext
+              .decodeAudioData(e.target.result)
+              .then((buffer) => {
+                if (source) {
+                  stopAudio();
+                }
+                audioBuffer = buffer;
+                playPauseButton.disabled = false;
+                playPauseButton.textContent = "Play";
+                isPlaying = false;
+                pauseOffset = 0;
+              })
+              .catch((error) => {
+                showMessage(`Error decoding audio: ${error.message}`, 5000);
+                fileNameDisplay.textContent = "No file selected";
+                playPauseButton.disabled = true;
+              });
+          };
+          reader.onerror = (error) => {
+            showMessage(`Error reading file: ${error.message}`, 5000);
+            fileNameDisplay.textContent = "No file selected";
+            playPauseButton.disabled = true;
+          };
+          reader.readAsArrayBuffer(file);
+        } else {
+          fileNameDisplay.textContent = "No file selected";
+          playPauseButton.disabled = true;
+          if (source) {
+            stopAudio();
+          }
+        }
+      });
+
+      // --- Play/Pause Toggle ---
+      playPauseButton.addEventListener("click", () => {
+        if (!audioBuffer) return;
+        if (audioContext.state === "suspended") {
+          audioContext.resume().then(() => {
+            if (isPlaying) {
+              pauseAudio();
+            } else {
+              playAudio();
+            }
+          });
+        } else {
+          if (isPlaying) {
+            pauseAudio();
+          } else {
+            playAudio();
+          }
+        }
+      });
+
+      // --- Play Audio Function ---
+      function playAudio() {
+        if (!audioBuffer || isPlaying) return;
+        source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(analyser);
+        analyser.connect(gainNode);
+        source.onended = () => {
+          if (source && isPlaying) {
+            isPlaying = false;
+            playPauseButton.textContent = "Play";
+            pauseOffset = 0;
+          }
+        };
+        startTime = audioContext.currentTime - pauseOffset;
+        source.start(0, pauseOffset % audioBuffer.duration);
+        isPlaying = true;
+        playPauseButton.textContent = "Pause";
+      }
+
+      // --- Pause Audio Function ---
+      function pauseAudio() {
+        if (!source || !isPlaying) return;
+        pauseOffset = audioContext.currentTime - startTime;
+        source.stop();
+        isPlaying = false;
+        playPauseButton.textContent = "Play";
+      }
+
+      // --- Stop Audio Function ---
+      function stopAudio() {
+        if (source) {
+          source.onended = null;
+          if (isPlaying) {
+            source.stop();
+          }
+          source.disconnect();
+          analyser.disconnect(gainNode);
+          source = null;
+        }
+        isPlaying = false;
+        playPauseButton.textContent = "Play";
+        pauseOffset = 0;
+      }
+
+      // --- Window Resize Handler ---
+      function onWindowResize() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const pixelRatio = renderer.getPixelRatio();
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+        renderTargetA.setSize(width * pixelRatio, height * pixelRatio);
+        renderTargetB.setSize(width * pixelRatio, height * pixelRatio);
+      }
+
+      // --- Animation Loop  ---
+      function animate() {
+        requestAnimationFrame(animate);
+        renderer.clear();
+        const time = performance.now() * 0.001;
+        if (analyser) {
+          analyser.getByteFrequencyData(dataArray);
+          visualizerBars.forEach((bar, i) => {
+            const frequencyValue = dataArray[i] / 255.0;
+            if (bar.material && bar.material.uniforms) {
+              if (bar.material.uniforms.u_frequency)
+                bar.material.uniforms.u_frequency.value = frequencyValue;
+              if (bar.material.uniforms.u_time)
+                bar.material.uniforms.u_time.value = time;
+            }
+          });
+        } else {
+          visualizerBars.forEach((bar) => {
+            if (bar.material && bar.material.uniforms) {
+              if (bar.material.uniforms.u_frequency)
+                bar.material.uniforms.u_frequency.value *= 0.95;
+              if (bar.material.uniforms.u_time)
+                bar.material.uniforms.u_time.value = time;
+            }
+          });
+        }
+        renderer.setRenderTarget(renderTargetA);
+        renderer.clear();
+        renderer.render(scene, camera);
+        renderer.setRenderTarget(null);
+        renderer.clear();
+        feedbackPass.uniforms.tDiffuse.value = renderTargetA.texture;
+        feedbackPass.uniforms.tOld.value = renderTargetB.texture;
+        feedbackPass.render(renderer, null, renderTargetA);
+        const temp = renderTargetA;
+        renderTargetA = renderTargetB;
+        renderTargetB = temp;
+      }
+
+      init();
+    </script>
+  </body>
+</html>
